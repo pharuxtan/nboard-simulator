@@ -1,0 +1,59 @@
+Portions of this software are derived from third-party works licensed under
+the following terms:
+
+* Zig (https://github.com/ziglang/zig)
+
+  Copyright (c) Zig contributors
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* WebUI (https://github.com/webui-dev/webui)
+
+  Copyright (c) Hassan Draga
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* Svelte (https://github.com/sveltejs/svelte)
+
+  Copyright (c) Svelte contributors
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* Sass (https://github.com/sass/sass)
+
+  Copyright (c) Google LLC
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* Melt UI (https://github.com/melt-ui/melt-ui)
+
+  Copyright (c) Thomas G. Lopes
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* Vite (https://github.com/vitejs/vite)
+
+  Copyright (c) VoidZero Inc. and Vite contributors
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* PostCSS (https://github.com/postcss/postcss)
+
+  Copyright (c) Andrey Sitnik
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* Monaco Editor (https://github.com/microsoft/monaco-editor)
+
+  Copyright (c) Microsoft Corporation
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* xterm.js (https://github.com/xtermjs/xterm.js)
+
+  Copyright (c) The xterm.js authors
+  Copyright (c) SourceLair Private Company
+  Copyright (c) Christopher Jeffrey
+  The MIT License (https://opensource.org/licenses/MIT)
+
+* LLVM (https://github.com/llvm/llvm-project)
+
+  Copyright (c) LLVM Project
+  Apache License, Version 2.0 (https://opensource.org/licenses/Apache-2.0)
+
+* Windows SDK (https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
+
+  Copyright (c) Microsoft Corporation
+  MICROSOFT SOFTWARE LICENSE TERMS (https://learn.microsoft.com/en-us/legal/windows-sdk/license-terms-ewdk)

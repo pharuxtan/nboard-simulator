@@ -1,0 +1,15 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Build and Launch Debug",
+      "type": "cppvsdbg",
+      "request": "launch",
+      "preLaunchTask": "build-dev",
+      "program": "${workspaceFolder}\\build\\Debug\\nboard-simulator.exe",
+      "cwd": "${workspaceFolder}\\build\\Debug",
+      "args": [],
+      "symbolSearchPath": "${workspaceFolder}\\build\\Debug\\nboard-simulator.exe"
+    }
+  ]
+}

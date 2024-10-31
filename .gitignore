@@ -1,0 +1,6 @@
+/.zig-cache
+/node_modules
+/zig-out
+/build
+
+package-lock.json

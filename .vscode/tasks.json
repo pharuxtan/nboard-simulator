@@ -1,0 +1,30 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build-prod",
+      "type": "shell",
+      "command": "zig build --summary all",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "dependsOn":[ "create-zig-interop" ]
+    },
+    {
+      "label": "build-dev",
+      "type": "shell",
+      "command": "zig build -Ddev --summary all",
+      "group": {
+        "kind": "build",
+        "isDefault": false
+      },
+      "dependsOn":[ "create-zig-interop" ]
+    },
+    {
+      "label": "create-zig-interop",
+      "type": "shell",
+      "command": "zig translate-c -I\"${workspaceFolder}/static/nboard/include\" -I\"${workspaceFolder}/static/nboard/include/IHM\" -I\"${workspaceFolder}/static/nboard/include/internal\" -I\"${workspaceFolder}/static/nboard/include/mbed\" \"${workspaceFolder}/interop.h\" -lc | Out-String | Set-Content \"${workspaceFolder}/src/lib/interop.zig\""
+    }
+  ]
+}

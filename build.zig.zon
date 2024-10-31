@@ -1,0 +1,21 @@
+.{
+  .name = "nboard-simulator",
+  .version = "1.0.0",
+  .minimum_zig_version = "0.13.0",
+  .dependencies = .{
+    .@"zig-webui" = .{
+      .url = "https://github.com/webui-dev/zig-webui/archive/c45c326.tar.gz",
+      .hash = "1220f7cb9608ca0b5946bee76bb9fe3867aa5cab47990d9cf02339d89dc7ae1d9a32"
+    }
+  },
+  .paths = .{
+    "src",
+    "static",
+    "webui-src",
+    "build.zig",
+    "build.zig.zon",
+    "interop.h",
+    "package.json",
+    "vite.config.js",
+  }
+}
