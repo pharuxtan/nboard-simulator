@@ -7,9 +7,11 @@
 
   let xterm = null;
   let showHelp = null;
-  let editor = null;
+  let editorMain = null;
+  let editorApi = null;
 
-  let saved = true;
+  let savedMain = true;
+  let savedApi = true;
 
   const { elements: { menubar }, builders: { createMenu } } = createMenubar();
   const { elements: { menu: menuMenu, item: menuItem, trigger: menuTrigger, separator: menuSeparator } } = createMenu({ positioning: { overflowPadding: 0, gutter: 2 } });
@@ -69,8 +71,10 @@
       showHelp();
       tabValue.set('console');
     } if(id === "save"){
-      saved = true;
-      saveMain(editor.getValue());
+      savedMain = true;
+      savedApi = true;
+      saveFile("resources/nboard/src/main.c", editorMain.getValue());
+      saveFile("resources/nboard/src/nb_api.c", editorApi.getValue());
     } else if(id === "build"){
       xterm.clear();
       xterm.write("Compilation de la Nboard...\n");
@@ -96,13 +100,17 @@
     } else if(id === "copy"){
       if($tabValue === 'console'){
         navigator.clipboard.writeText(xterm.getSelection());
-      } else if($tabValue === 'monaco'){
-        navigator.clipboard.writeText(editor.getModel().getValueInRange(editor.getSelection()));
+      } else if($tabValue === 'monaco-main'){
+        navigator.clipboard.writeText(editorMain.getModel().getValueInRange(editorMain.getSelection()));
+      } else if($tabValue === 'monaco-api'){
+        navigator.clipboard.writeText(editorApi.getModel().getValueInRange(editorApi.getSelection()));
       }
     } else if(id === "paste"){
-      if($tabValue === 'monaco'){
-        const text = await navigator.clipboard.readText();
-        editor.trigger('keyboard', 'type', { text });
+      const text = await navigator.clipboard.readText();
+      if($tabValue === 'monaco-main'){
+        editorMain.trigger('keyboard', 'type', { text });
+      } else if($tabValue === 'monaco-api'){
+        editorApi.trigger('keyboard', 'type', { text });
       }
     } else if(id === "open-vscode"){
       openVSC();
@@ -111,8 +119,12 @@
     }
   }
 
-  function editorChange(){
-    saved = false;
+  function editorMainChange(){
+    savedMain = false;
+  }
+
+  function editorApiChange(){
+    savedApi = false;
   }
 </script>
 
@@ -139,7 +151,8 @@
     <div class="tabs" use:melt={$tabList}>
       <button class="tab nboard" use:melt={$tabTrigger("nboard")}>Nboard</button>
       <button class="tab console" use:melt={$tabTrigger("console")}>Console</button>
-      <button class="tab editor" use:melt={$tabTrigger("monaco")}>Editeur de code{saved ? '' : ' - Non sauvegardé'}</button>
+      <button class="tab editor" use:melt={$tabTrigger("monaco-main")}>main.c{savedMain ? '' : ' - Non sauvegardé'}</button>
+      <button class="tab editor" use:melt={$tabTrigger("monaco-api")}>nb_api.c{savedApi ? '' : ' - Non sauvegardé'}</button>
     </div>
   </div>
   
@@ -147,11 +160,14 @@
     <div use:melt={$tabContent('nboard')} class="tab">
       <Nboard focus={$tabValue === 'nboard'} tab={tabValue} />
     </div>
-    <div use:melt={$tabContent('monaco')} class="tab">
-      <Monaco bind:editor={editor} on:change={editorChange} />
-    </div>
     <div use:melt={$tabContent('console')} class="tab">
       <Console bind:xterm={xterm} bind:showHelp={showHelp} tab={tabValue} redirectKeydownEvent={keydownAction} />
+    </div>
+    <div use:melt={$tabContent('monaco-main')} class="tab">
+      <Monaco bind:editor={editorMain} on:change={editorMainChange} file="resources/nboard/src/main.c" />
+    </div>
+    <div use:melt={$tabContent('monaco-api')} class="tab">
+      <Monaco bind:editor={editorApi} on:change={editorApiChange} file="resources/nboard/src/nb_api.c" />
     </div>
   </div>
 </div>

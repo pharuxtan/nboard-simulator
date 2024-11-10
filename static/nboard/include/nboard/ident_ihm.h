@@ -1,5 +1,5 @@
-#ifndef _IDENT_H
-#define _IDENT_H
+#ifndef _INC_IDENT_IHM_H_
+#define _INC_IDENT_IHM_H_
 
 /* FILE: ident.h */
 /****************************************************************************************/
@@ -36,17 +36,17 @@
 // Réservé               ...   //|     |     |     |                    |      |      | plus grand ou tactile             |
 //                       0x77D //|     |     |     |                    |      |      |                                   |
 //                             //|     |     |     |                    |      |      |                                   |
-// #define   LCD_OVERFLOW   0x77E //|  M  |  O  |  R  |Flag d'Overflow LCD |  0   |      |                                   |
+#define   LCD_OVERFLOW   0x77E //|  M  |  O  |  R  |Flag d'Overflow LCD |  0   |      |                                   |
 #define   LCD_CLEAR      0x77F //|  M  |  O  |  D  |                    |  0   |      | Efface l'ecran LCD                |
                                //|     |     |     |                    |      |      |                                   |
 // JOG                         //|     |     |     |                    |      |      |                                   |
-// #define   JOG_REQ        0x790 //|  M  |  I  |  R  | Demande valeur JOG |  0   |      |                                   |
-// #define   JOG_DATA       0x791 //|  M  |  O  |  D  |     Valeur JOG     |  1   |  U8  | STATUS_JOG=PTP                    |
+#define   JOG_REQ        0x790 //|  M  |  I  |  R  | Demande valeur JOG |  0   |      |                                   |
+#define   JOG_DATA       0x791 //|  M  |  O  |  D  |     Valeur JOG     |  1   |  U8  | STATUS_JOG=PTP                    |
 // CODEUR                        |     |     |     |                    |      |      |                                   |
-// #define   COD_REQ        0x7A0 //|  M  |  I  |  R  | Demande valeur COD |  0   |      |                                   |
-// #define   COD_DATA       0x7A1 //|  M  |  O  |  D  |     Valeur COD     |  1   |  S8  | OFFSET du CODEUR entre -128 et 127|
+#define   COD_REQ        0x7A0 //|  M  |  I  |  R  | Demande valeur COD |  0   |      |                                   |
+#define   COD_DATA       0x7A1 //|  M  |  O  |  D  |     Valeur COD     |  1   |  S8  | OFFSET du CODEUR entre -128 et 127|
 // BARGRAPH                      |     |     |     |                    |      |      |                                   |
-#define   BAR_SET        0x7B0 //|  M  |  I  |  D  |   valeur bargraph  |  2   |  U16 | Les bits à allumer                |
+#define   BAR_WRITE      0x7B0 //|  M  |  I  |  D  |   valeur bargraph  |  2   |  U16 | Les bits à allumer                |
 //------------------------------------------------------------------------------------------------------------------------|
 /* Légende : I = Consigne pour la carte
              O = Etat donné par la carte
@@ -54,4 +54,4 @@
              D = Trame de données
              R = Trame de requete */
              
-#endif
+#endif /* INC_IDENT_IHM_H_ */

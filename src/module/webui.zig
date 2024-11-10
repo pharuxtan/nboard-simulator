@@ -74,8 +74,8 @@ fn updateContext(e: *Event) void {
   const jog = e.getIntAt(0);
   const cod = e.getIntAt(1);
 
-  nboard.context.jog.store(@intCast(jog), .seq_cst);  
-  nboard.context.cod.store(@intCast(cod), .seq_cst);  
+  nboard.context.jog.store(@intCast(jog), .seq_cst);
+  nboard.context.cod.store(@intCast(cod), .seq_cst);
 
   const staticContext = nboard.context.static();
 
@@ -89,41 +89,43 @@ fn updateContext(e: *Event) void {
 
   script.appendSlice("receiveContext([") catch return;
 
-  for(0..byte_buf.items.len) |i| {
-    const str = std.fmt.allocPrint(allocator, "{},", .{ byte_buf.items[i] }) catch return;
-    script.appendSlice(str) catch return;
-    allocator.free(str);
+  for (0..byte_buf.items.len) |i| {
+      const str = std.fmt.allocPrint(allocator, "{},", .{byte_buf.items[i]}) catch return;
+      script.appendSlice(str) catch return;
+      allocator.free(str);
   }
-  
+
   script.appendSlice("0])") catch return;
 
   const slice = script.toOwnedSlice() catch return;
   defer allocator.free(slice);
 
-  const zero_terminated: [:0]u8 = std.fmt.allocPrintZ(allocator, "{s}", .{ slice }) catch return;
+  const zero_terminated: [:0]u8 = std.fmt.allocPrintZ(allocator, "{s}", .{slice}) catch return;
   defer allocator.free(zero_terminated);
 
   e.runClient(zero_terminated);
 }
 
-fn readMain(e: *Event) void {
-  var file = std.fs.cwd().openFile("resources/nboard/src/main.cpp", .{ .mode = .read_only }) catch return;
+fn readFile(e: *Event) void {
+  const file_path = e.getString();
+  var file = std.fs.cwd().openFile(file_path, .{ .mode = .read_only }) catch return;
   defer file.close();
-  
+
   const buf = file.readToEndAlloc(allocator, 0xFFFFFF) catch return;
   defer allocator.free(buf);
 
-  const bufZ = std.fmt.allocPrintZ(allocator, "{s}", .{ buf }) catch return;
+  const bufZ = std.fmt.allocPrintZ(allocator, "{s}", .{buf}) catch return;
   defer allocator.free(bufZ);
 
   e.returnString(bufZ);
 }
 
-fn saveMain(e: *Event) void {
-  var file = std.fs.cwd().createFile("resources/nboard/src/main.cpp", .{ .truncate = true }) catch return;
+fn saveFile(e: *Event) void {
+  const file_path = e.getStringAt(0);
+  var file = std.fs.cwd().createFile(file_path, .{ .truncate = true }) catch return;
   defer file.close();
 
-  const buf = e.getString();
+  const buf = e.getStringAt(1);
 
   file.writeAll(buf) catch return;
 }
@@ -133,25 +135,18 @@ fn openVSC(e: *Event) void {
 
   var arena = std.heap.ArenaAllocator.init(allocator);
   defer arena.deinit();
-  
+
   const arenaAllocator = arena.allocator();
 
   const dir = std.fs.cwd().openDir("resources/nboard", .{}) catch return;
 
   const path = dir.realpathAlloc(allocator, ".") catch return;
   defer allocator.free(path);
-  
-  const main = dir.realpathAlloc(allocator, "src/main.cpp") catch return;
+
+  const main = dir.realpathAlloc(allocator, "src/main.c") catch return;
   defer allocator.free(main);
 
-  const argv = [_][]const u8{
-    "C:\\Windows\\System32\\cmd.exe",
-    "/c",
-    "code",
-    "-g",
-    main,
-    path
-  };
+  const argv = [_][]const u8{ "C:\\Windows\\System32\\cmd.exe", "/c", "code", "-g", main, path };
 
   const res = child.init(&argv, arenaAllocator) catch return;
   arenaAllocator.free(res.stdout);
@@ -165,11 +160,11 @@ pub fn start() void {
   _ = dyn.loadLibrary("./resources/webview/WebView2Loader.dll") catch {};
 
   dpi.fix();
-  
+
   webui.setTimeout(10);
 
   window = webui.newWindow();
-  if(window) |win| {
+  if (window) |win| {
     _ = win.setRootFolder("resources");
 
     // Non-blocking events create a lot of threads as we create a lot of them
@@ -189,8 +184,8 @@ pub fn start() void {
     _ = win.bind("updateContext", updateContext);
     _ = win.bind("isBuilding", isBuilding);
     _ = win.bind("isRunning", isRunning);
-    _ = win.bind("readMain", readMain);
-    _ = win.bind("saveMain", saveMain);
+    _ = win.bind("readFile", readFile);
+    _ = win.bind("saveFile", saveFile);
     _ = win.bind("openVSC", openVSC);
 
     _ = win.show("index.html");

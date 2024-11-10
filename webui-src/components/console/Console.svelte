@@ -59,6 +59,25 @@
     }
   }
 
+  window.failLog = function failLog(message, trace){
+    console.warn(message, "\n", trace);
+    try {
+      trace = trace.split("\n").filter(t => !t.startsWith("???")).join("\n").split("C:").filter(t => t.indexOf("resources\\nboard\\src") != -1).map(t => t.split("src\\")[1].replace(/0x.*\n/, "\n")).join("");
+    } catch(e){
+      trace = "";
+      console.error("Parsing trace error:", e);
+    }
+
+    if(trace === ""){
+      xterm.write(redColor(`ERREUR ${message}\n`));
+    } else {
+      xterm.write(redColor(`ERREUR ${message}:\n`));
+      xterm.write(redColor(trace));
+    }
+
+    tab.set("console");
+  }
+
   showHelp = function showHelp(){
     xterm.clear();
     xterm.write([
@@ -93,8 +112,6 @@
   onMount(() => {
     xterm.open(xterm_el);
     showHelp();
-
-    window.xterm = xterm;
 
     requestAnimationFrame(function fit(){
       fitAddon.fit();

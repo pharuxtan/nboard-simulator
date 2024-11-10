@@ -11,6 +11,8 @@ pub fn build(b: *std.Build) void {
     .root_source_file = b.path("src/main.zig"),
     .target = target,
     .optimize = optimize,
+    .error_tracing = true,
+    .strip = false
   });
 
   exe.addWin32ResourceFile(.{

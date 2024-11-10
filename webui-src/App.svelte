@@ -9,7 +9,7 @@
   let start = false;
 
   const importedFuncs = [
-    "readMain", "saveMain",
+    "readFile", "saveFile",
     "setPin", "setAnain",
     "runNboard", "stopNboard", "resetNboard", "buildNboard", "buildAndRunNboard",
     "updateContext", "isBuilding", "isRunning",

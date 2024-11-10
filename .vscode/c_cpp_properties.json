@@ -5,9 +5,10 @@
       "name": "Win32",
       "includePath": [
         "${workspaceFolder}/static/nboard/include",
-        "${workspaceFolder}/static/nboard/include/IHM",
+        "${workspaceFolder}/static/nboard/include/common",
+        "${workspaceFolder}/static/nboard/include/driver",
         "${workspaceFolder}/static/nboard/include/internal",
-        "${workspaceFolder}/static/nboard/include/mbed"
+        "${workspaceFolder}/static/nboard/include/nboard"
       ]
     }
   ]

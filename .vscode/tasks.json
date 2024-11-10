@@ -24,7 +24,7 @@
     {
       "label": "create-zig-interop",
       "type": "shell",
-      "command": "zig translate-c -I\"${workspaceFolder}/static/nboard/include\" -I\"${workspaceFolder}/static/nboard/include/IHM\" -I\"${workspaceFolder}/static/nboard/include/internal\" -I\"${workspaceFolder}/static/nboard/include/mbed\" \"${workspaceFolder}/interop.h\" -lc | Out-String | Set-Content \"${workspaceFolder}/src/lib/interop.zig\""
+      "command": "zig translate-c -I\"${workspaceFolder}/static/nboard/include\" -I\"${workspaceFolder}/static/nboard/include/common\" -I\"${workspaceFolder}/static/nboard/include/driver\" -I\"${workspaceFolder}/static/nboard/include/internal\" -I\"${workspaceFolder}/static/nboard/include/nboard\" \"${workspaceFolder}/interop.h\" -lc | Out-String | Set-Content \"${workspaceFolder}/src/lib/interop.zig\""
     }
   ]
 }

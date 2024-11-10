@@ -12,6 +12,7 @@
   let context = {
     pins: Array.from({ length: 256 }, () => 0),
     anain: Array.from({ length: 8 }, () => 0),
+    anaout: 0,
     jog: 0,
     cod: 0,
     lcd: Array.from({ length: 32 }, () => ' '),
@@ -19,7 +20,7 @@
   };
 
   const jog = new Uint8Array(1);
-  const cod = new Uint8Array(1);
+  const cod = new Int8Array(1);
 
   const keyState = {
     // BUTTON 0
@@ -72,8 +73,6 @@
   onMount(() => {
     document.addEventListener("keydown", ({ key, ctrlKey }) => (!ctrlKey && sendKey(key, 1)));
     document.addEventListener("keyup", ({ key, ctrlKey }) => (!ctrlKey && sendKey(key, 0)));
-
-    runNboard();
   });
 
   function inputSetAnain(e){
@@ -98,8 +97,11 @@
       position += 4;
     }
 
+    context.anaout = buffer.getFloat32(position);
+    position += 4;
+
     context.jog = buffer.getUint8(position++);
-    context.cod = buffer.getUint8(position++);
+    context.cod = buffer.getInt8(position++);
 
     for(let i in context.lcd){
       context.lcd[i] = String.fromCharCode(buffer.getUint8(position++));
@@ -334,11 +336,11 @@
       flex-direction: column;
       justify-content: space-between;
 
-      top: 10.8%;
+      top: 9.5%;
       left: 42.5%;
 
       width: 50%;
-      height: 12.5%;
+      height: 15.5%;
 
       .row {
         display: flex;
@@ -346,7 +348,7 @@
         justify-content: space-between;
         
         width: 100%;
-        height: 41%;
+        height: 50%;
 
         .col {
           font-family: 'Droid Sans Mono';

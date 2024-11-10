@@ -1,33 +1,33 @@
 #include "simulator.h"
 
+extern "C" {
+
 int main();
 
 SimulatorFuncs* funcs;
 
-extern "C" __declspec(dllexport) void internal_main(SimulatorFuncs* f) {
-  funcs = f;
-
-  main();
+void pin_mode(uint8_t pin, InternalPinMode mode){
+  return funcs->pin_mode(pin, mode);
 }
 
-void set_signal(PinName pin, uint8_t signal){
-  return funcs->set_signal(pin, signal);
+void set_pin(uint8_t pin, uint8_t state){
+  return funcs->set_pin(pin, state);
 }
 
-uint8_t read_signal(PinName pin){
-  return funcs->read_signal(pin);
+void toggle_pin(uint8_t pin){
+  return funcs->toggle_pin(pin);
 }
 
-void set_bus(PinName pins[16], uint16_t signal){
-  return funcs->set_bus(pins, signal);
+uint8_t read_pin(uint8_t pin){
+  return funcs->read_pin(pin);
 }
 
-uint16_t read_bus(PinName pins[16]){
-  return funcs->read_bus(pins);
+void set_bus(uint8_t pins[16], uint16_t state){
+  return funcs->set_bus(pins, state);
 }
 
-void* debug(void* v){
-  return funcs->debug(v);
+void error(const char* msg){
+  return funcs->error(msg);
 }
 
 void wait(float s){
@@ -46,34 +46,38 @@ uint64_t get_current_time(){
   return funcs->get_current_time();
 }
 
-void pwm_period(PinName pin, int32_t period){
-  return funcs->pwm_period(pin, period);
+void pwm_freq(uint8_t pin, float freq){
+  return funcs->pwm_freq(pin, freq);
 }
 
-void pwm_rcy(PinName pin, float rcy){
+void pwm_rcy(uint8_t pin, float rcy){
   return funcs->pwm_rcy(pin, rcy);
 }
 
-void pwm_pulse(PinName pin, int32_t pulse){
-  return funcs->pwm_pulse(pin, pulse);
+uint16_t read_ana(uint8_t pin){
+  return funcs->read_ana(pin);
 }
 
-float read_ana(){
-  return funcs->read_ana();
+void write_ana(uint8_t pin, uint16_t value){
+  return funcs->write_ana(pin, value);
 }
 
-uint16_t readu16_ana(){
-  return funcs->readu16_ana();
+void can_write(uint16_t ident, uint8_t size, uint8_t *tab_data){
+  return funcs->can_write(ident, size, tab_data);
 }
 
-void can_write(CAN_Message* msg){
-  return funcs->can_write(msg);
-}
-
-unsigned char get_jog(){
+uint8_t get_jog(){
   return funcs->get_jog();
 }
 
-unsigned char get_cod(){
+int8_t get_cod(){
   return funcs->get_cod();
+}
+
+}
+
+__declspec(dllexport) void internal_main(SimulatorFuncs* f) {
+  funcs = f;
+
+  main();
 }

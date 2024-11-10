@@ -5,6 +5,7 @@
   
   const dispatch = createEventDispatcher();
 
+  export let file;
   export let editor;
   let editor_el;
   
@@ -12,8 +13,8 @@
 
   onMount(async () => {
     editor = monaco.editor.create(editor_el, {
-      value: await readMain(),
-      language: 'cpp',
+      value: await readFile(file),
+      language: 'c',
       theme: 'dark-plus',
       automaticLayout: true,
       mouseWheelZoom: true,
@@ -25,8 +26,6 @@
     editor.getModel().onDidChangeContent(() => {
       dispatch('change');
     });
-
-    window.editor = editor;
   });
 
   onDestroy(() => {

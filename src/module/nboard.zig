@@ -1,17 +1,27 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const atomic = std.atomic;
 const Futex = std.Thread.Futex;
 const windows = std.os.windows;
 
 extern "kernel32" fn TerminateThread(hThread: windows.HANDLE, dwExitCode: windows.DWORD) callconv(windows.WINAPI) windows.BOOL;
+extern "kernel32" fn FreeLibrary(hLibModule: windows.HMODULE) callconv(windows.WINAPI) windows.BOOL;
 
 const dyn = @import("../lib/dyn.zig");
 const interop = @import("../lib/interop.zig");
 const nboard = @import("../lib/nboard.zig");
-
-const PinName = interop.PinName;
+const getWindow = @import("../module/webui.zig").getWindow;
 
 // Nboard Thread
+
+const PinMode = enum(u8) {
+  NONE,
+  OUTPUT,
+  INPUT_PULL_UP,
+  INPUT_PULL_DOWN,
+  INPUT_PULL_NONE,
+  PWM,
+};
 
 const BUILD_NBOARD_FLAG = 1 << 0;
 const RUN_NBOARD_FLAG = 1 << 1;
@@ -20,32 +30,42 @@ const STOP_NBOARD_FLAG = 1 << 2;
 pub const NboardContextStatic = extern struct {
   pins: [256]u8,
   anain: [8]f32,
+  anaout: f32,
   jog: u8,
-  cod: u8,
+  cod: i8,
   lcd: [32]u8,
   bargraph: [10]u8,
 };
 
 const NboardContext = struct {
   flags: atomic.Value(u32),
+  pinModes: [256]atomic.Value(PinMode),
   pins: [256]atomic.Value(u8),
   pwms: [4]PWM,
   anain: [8]atomic.Value(f32),
+  anaout: atomic.Value(f32),
 
   jog: atomic.Value(u8),
-  cod: atomic.Value(u8),
+  cod: atomic.Value(i8),
 
   ihmMutex: std.Thread.Mutex,
   lcd: [32]u8,
   bargraph: [10]u8,
 
   fn init() NboardContext {
+    @setEvalBranchQuota(10000);
+
     var c = std.mem.zeroInit(NboardContext, .{
       .flags = atomic.Value(u32).init(0),
       .jog = atomic.Value(u8).init(0),
-      .cod = atomic.Value(u8).init(0),
+      .cod = atomic.Value(i8).init(0),
+      .anaout = atomic.Value(f32).init(0),
       .ihmMutex = std.Thread.Mutex{},
     });
+
+    for(&c.pinModes) |*pinMode| {
+      pinMode.* = atomic.Value(PinMode).init(PinMode.NONE);
+    }
 
     for(&c.pins) |*pin| {
       pin.* = atomic.Value(u8).init(0);
@@ -72,10 +92,18 @@ const NboardContext = struct {
   }
 
   fn restore(self: *NboardContext) void {
+    @setEvalBranchQuota(10000);
+
+    self.anaout.store(0, .seq_cst);
+
     for(&self.pwms) |*pwm| {
       pwm.*.period.store(0, .seq_cst);
       pwm.*.periodUp.store(0, .seq_cst);
       pwm.*.periodDown.store(0, .seq_cst);
+    }
+
+    for(&self.pinModes) |*pinMode| {
+      pinMode.*.store(PinMode.NONE, .seq_cst);
     }
 
     for(&self.pins) |*pin| {
@@ -93,6 +121,14 @@ const NboardContext = struct {
     for(&self.bargraph) |*led| {
       led.* = 0;
     }
+
+    // As the Nboard Thread is killed, the mutex can be in lock state if it was writing to the CAN so we unlock it
+    _ = self.ihmMutex.tryLock();
+    
+    if(builtin.mode == .Debug)
+      self.ihmMutex.impl.locking_thread.store(std.Thread.getCurrentId(), .seq_cst);
+    
+    self.ihmMutex.unlock();
   }
 
   pub fn static(self: *NboardContext) NboardContextStatic {
@@ -105,6 +141,8 @@ const NboardContext = struct {
     for(0..8) |i| {
       s.anain[i] = self.anain[i].load(.seq_cst);
     }
+
+    s.anaout = self.anaout.load(.seq_cst);
 
     s.jog = self.jog.load(.seq_cst);
     s.cod = self.cod.load(.seq_cst);
@@ -212,8 +250,6 @@ fn managerThread() void {
     if(flagCheck(flags, RUN_NBOARD_FLAG)){
       if(optThread) |_| continue;
 
-      context.restore();
-
       optLib = optLib orelse dyn.loadLibrary("./resources/build/nboard.dll") catch continue;
 
       if(optLib) |*lib| {
@@ -237,57 +273,109 @@ fn stopNboardThread(optThread: *?std.Thread, optLib: *?std.DynLib) void {
     context.restore();
     optThread.* = null;
   }
-  if(optLib.*) |lib| {
-    std.DynLib.close(@constCast(&lib));
+  if(optLib.*) |*lib| {
+    while(FreeLibrary(lib.inner.dll) != 0){} // Be sure that the DLL is fully unloaded
     optLib.* = null;
   }
 }
 
-fn nboardThread(main: dyn.funcType("internal_main")) void {
+fn nboardThread(main: dyn.funcType("internal_main")) !void {
   main(&simulatorFuncs);
+}
+
+fn checkMode(pin: u8, mode: PinMode) bool {
+  const m = context.pinModes[@intCast(pin)].load(.seq_cst);
+  return m == mode;
+}
+
+fn getStackTrace(allocator: std.mem.Allocator) []const u8 {
+  const ret_addr = @returnAddress();
+  var stacktrace = std.ArrayList(u8).init(allocator);
+  errdefer stacktrace.deinit();
+  const writer = stacktrace.writer();
+  const debug_info = std.debug.getSelfDebugInfo() catch {
+    return "null";
+  };
+  std.debug.writeCurrentStackTrace(writer, debug_info, .no_color, ret_addr) catch {
+    return "null";
+  };
+  return stacktrace.toOwnedSlice() catch "null";
+}
+
+fn failStop(msg: [*:0]const u8) noreturn {
+  const allocator = std.heap.c_allocator;
+
+  const window = getWindow();
+  if(window) |win| blk: {
+    const rawTrace = getStackTrace(allocator);
+
+    std.debug.print("trace:\n{s}\n", .{rawTrace});
+
+    const sizeTrace = std.mem.replacementSize(u8, rawTrace, "\\", "\\\\");
+    
+    const trace = allocator.alloc(u8, sizeTrace) catch break :blk;
+    defer allocator.free(trace);
+
+    _ = std.mem.replace(u8, rawTrace, "\\", "\\\\", trace);
+
+    if(!std.mem.eql(u8, rawTrace, "null"))
+      allocator.free(rawTrace);
+
+    const script = std.fmt.allocPrintZ(allocator, "failLog(`{s}`,`{s}`)", .{ msg, trace }) catch break :blk;
+    defer allocator.free(script);
+
+    win.run(script);
+  }
+  
+  stop();
+
+  while(true){
+    std.time.sleep(1e6);
+  }
 }
 
 // PWM Threads
 
 const PWM = struct {
-  period: atomic.Value(i32),
-  periodUp: atomic.Value(i32),
-  periodDown: atomic.Value(i32),
-  pin: PinName,
+  period: atomic.Value(f32),
+  periodUp: atomic.Value(f32),
+  periodDown: atomic.Value(f32),
+  pin: u8,
 
-  fn init(pin: PinName) PWM {
+  fn init(pin: u8) PWM {
     return .{
-      .period = atomic.Value(i32).init(0),
-      .periodUp = atomic.Value(i32).init(0),
-      .periodDown = atomic.Value(i32).init(0),
+      .period = atomic.Value(f32).init(0),
+      .periodUp = atomic.Value(f32).init(0),
+      .periodDown = atomic.Value(f32).init(0),
       .pin = pin
     };
   }
 
-  fn setPeriod(self: *PWM, period: i32) void {
-    const p: f64 = @floatFromInt(self.period.load(.seq_cst));
+  fn setFreq(self: *PWM, period: f32) void {
+    const p: f32 = self.period.load(.seq_cst);
     self.period.store(0, .seq_cst);
     if(p != 0){
-      const p_up: f64 = @floatFromInt(self.periodUp.load(.seq_cst));
-      const p_down: f64 = @floatFromInt(self.periodDown.load(.seq_cst));
-      self.periodUp.store(@intFromFloat(p_up * @as(f64, @floatFromInt(period)) / p), .seq_cst);
-      self.periodDown.store(@intFromFloat(p_down * @as(f64, @floatFromInt(period)) / p), .seq_cst);
+      const p_up: f32 = self.periodUp.load(.seq_cst);
+      const p_down: f32 = self.periodDown.load(.seq_cst);
+      self.periodUp.store(p_up * period / p, .seq_cst);
+      self.periodDown.store(p_down * period / p, .seq_cst);
     }
     self.period.store(period, .seq_cst);
   }
 
   fn setRcy(self: *PWM, rcy: f32) void {
-    const r: f64 = @floatCast(std.math.clamp(rcy, 0, 1));
-    const period: f64 = @floatFromInt(self.period.load(.seq_cst));
-    self.periodUp.store(@intFromFloat(period * r), .seq_cst);
-    self.periodDown.store(@intFromFloat(period * (1.0 - r)), .seq_cst);
-  }
-
-  fn setPulse(self: *PWM, pulse: i32) void {
-    const period: f64 = @floatFromInt(self.period.load(.seq_cst));
-    const p: i32 = std.math.clamp(pulse, 0, self.period.load(.seq_cst));
-    self.periodUp.store(p, .seq_cst);
-    self.periodDown.store(@intFromFloat(period - @as(f64, @floatFromInt(p))), .seq_cst);
+    const r: f32 = std.math.clamp(rcy, 0, 1);
+    const period: f32 = self.period.load(.seq_cst);
+    if(r == 1){
+      self.periodUp.store(period, .seq_cst);
+      self.periodDown.store(0, .seq_cst);
+    } else if(r == 0){
+      self.periodUp.store(0, .seq_cst);
+      self.periodDown.store(period, .seq_cst);
+    } else {
+      self.periodUp.store(period / r, .seq_cst);
+      self.periodDown.store(period / (1.0 - r), .seq_cst);
+    }
   }
 
   fn setPin(self: *PWM, state: u8) void {
@@ -299,25 +387,25 @@ fn pwmThread(pwm_index: usize) void {
   while(true)
   {
     var pwm = context.pwms[pwm_index];
-    const period = pwm.period.load(.seq_cst);
-    const periodUp = pwm.periodUp.load(.seq_cst);
-    const periodDown = pwm.periodDown.load(.seq_cst);
-    if(period == 0 or (periodUp == 0 and periodDown == 0) or !is_running.load(.acquire)){
+    const period: f32 = pwm.period.load(.seq_cst);
+    const periodUp: f32 = pwm.periodUp.load(.seq_cst);
+    const periodDown: f32 = pwm.periodDown.load(.seq_cst);
+    if(!checkMode(pwm.pin, PinMode.PWM) or period == 0 or (periodUp == 0 and periodDown == 0) or !is_running.load(.acquire)){
       std.time.sleep(1e6);
       continue;
     }
 
     if(periodUp == period){
       if(is_running.load(.acquire)) pwm.setPin(1) else continue;
-      std.time.sleep(@intCast(period * 1000));
+      std.time.sleep(@intFromFloat(1.0e9 / period));
     } else if(periodDown == period){
       if(is_running.load(.acquire)) pwm.setPin(0) else continue;
-      std.time.sleep(@intCast(period * 1000));
+      std.time.sleep(@intFromFloat(1.0e9 / period));
     } else {
       if(is_running.load(.acquire)) pwm.setPin(1) else continue;
-      std.time.sleep(@intCast(periodUp * 1000));
+      std.time.sleep(@intFromFloat(1.0e9 / periodUp));
       if(is_running.load(.acquire)) pwm.setPin(0) else continue;
-      std.time.sleep(@intCast(periodDown * 1000));
+      std.time.sleep(@intFromFloat(1.0e9 / periodDown));
     }
   }
 }
@@ -325,31 +413,43 @@ fn pwmThread(pwm_index: usize) void {
 // Simulator Funcs
 
 var simulatorFuncs = interop.SimulatorFuncs{
-  .debug = @ptrCast(&debug),
+  .pin_mode = @ptrCast(&pin_mode),
+  .@"error" = @ptrCast(&_error),
   .wait = @ptrCast(&wait),
   .wait_ms = @ptrCast(&wait_ms),
   .wait_us = @ptrCast(&wait_us),
   .get_current_time = @ptrCast(&get_current_time),
-  .set_signal =  @ptrCast(&set_signal),
-  .read_signal = @ptrCast(&read_signal),
+  .set_pin = @ptrCast(&set_pin),
+  .toggle_pin = @ptrCast(&toggle_pin),
+  .read_pin = @ptrCast(&read_pin),
   .set_bus = @ptrCast(&set_bus),
-  .read_bus = @ptrCast(&read_bus),
-  .pwm_period = @ptrCast(&pwm_period),
+  .pwm_freq = @ptrCast(&pwm_freq),
   .pwm_rcy = @ptrCast(&pwm_rcy),
-  .pwm_pulse = @ptrCast(&pwm_pulse),
   .read_ana = @ptrCast(&read_ana),
-  .readu16_ana = @ptrCast(&readu16_ana),
+  .write_ana = @ptrCast(&write_ana),
   .get_jog = @ptrCast(&get_jog),
   .get_cod = @ptrCast(&get_cod),
   .can_write = @ptrCast(&can_write),
 };
 
-fn debug(v: *anyopaque) ?*anyopaque {
-  _ = v;
-  context.ihmMutex.lock();
-  std.debug.print("{s}\n", .{ context.lcd });
-  context.ihmMutex.unlock();
-  return null;
+fn pin_mode(pin: u8, mode: PinMode) void {
+  const actual = context.pinModes[@intCast(pin)].load(.seq_cst);
+  if(actual == PinMode.PWM and mode != PinMode.PWM){
+    failStop("Vous ne pouvez pas changer de mode après avoir mit une broche en mode PWM");
+  } else if(mode == PinMode.PWM){
+    switch(pin){
+      interop.PA_2 => failStop("Vous ne pouvez pas mettre la led 7 en mode PWM"),
+      interop.PA_5 => failStop("Vous ne pouvez pas mettre la led 3 en mode PWM"),
+      interop.PA_0 => failStop("Vous ne pouvez pas mettre la led 6 en mode PWM"),
+      interop.PB_3 => failStop("Vous ne pouvez pas mettre la led 0 en mode PWM"),
+      else => {}
+    }
+  }
+  context.pinModes[@intCast(pin)].store(mode, .seq_cst);
+}
+
+fn _error(msg: [*c]const u8) void {
+  failStop(msg);
 }
 
 fn wait(s: f32) void {
@@ -369,94 +469,112 @@ fn get_current_time() u64 {
   return now.timestamp / 10;
 }
 
-fn set_signal(pin: PinName, signal: u8) void {
-  context.pins[@intCast(pin)].store(signal, .seq_cst);
+fn set_pin(pin: u8, signal: u8) void {
+  if(!checkMode(pin, PinMode.OUTPUT)){
+    failStop("Une broche que vous essayez de changer n'est pas en mode output");
+  }
+  context.pins[@intCast(pin)].store(@intFromBool(signal != 0), .seq_cst);
 }
 
-fn read_signal(pin: PinName) u8 {
-  return context.pins[@intCast(pin)].load(.seq_cst);
+fn toggle_pin(pin: u8) void {
+  if(!checkMode(pin, PinMode.OUTPUT)){
+    failStop("Une broche que vous essayez de changer n'est pas en mode output");
+  }
+  const state = context.pins[@intCast(pin)].load(.seq_cst);
+  context.pins[@intCast(pin)].store(@intFromBool(state == 0), .seq_cst);
 }
 
-fn set_bus(pins: [*c]PinName, signal: u16) void {
+fn read_pin(pin: u8) u8 {
+  if(checkMode(pin, PinMode.INPUT_PULL_UP)){
+    return @intFromBool(context.pins[@intCast(pin)].load(.seq_cst) == 0);
+  } else if(checkMode(pin, PinMode.INPUT_PULL_DOWN) or checkMode(pin, PinMode.INPUT_PULL_NONE)){
+    // CHECK BP
+    if(pin == interop.PA_9 or
+       pin == interop.PA_10 or
+       pin == interop.PB_0 or
+       pin == interop.PB_7){
+      failStop("Vous essayez de lire un bouton poussoir en pull down/pull none, ce qui n'est pas possible");
+    }
+    return @intFromBool(context.pins[@intCast(pin)].load(.seq_cst) != 0);
+  } else {
+    failStop("Une broche n'est pas en mode pull up/down/none");
+  }
+}
+
+fn set_bus(pins: [*c]u8, signal: u16) void {
   for(0..16, pins) |i, pin| {
     if(pin == interop.NC) continue;
+    if(!checkMode(pin, PinMode.OUTPUT)){
+      failStop("Une broche que vous essayez de changer dans le bus n'est pas en mode output");
+    }
     context.pins[@intCast(pin)].store(@intCast((signal >> @intCast(i)) & 1), .seq_cst);
   }
 }
 
-fn read_bus(pins: [*c]PinName) u16 {
-  var signal: u16 = 0;
-  for(0..16, pins) |i, pin| {
-    if(pin == interop.NC) continue;
-    signal |= context.pins[@intCast(pin)].load(.seq_cst) << @intCast(i);
+fn pwm_freq(pin: u8, freq: f32) void {
+  if(!checkMode(pin, PinMode.PWM)){
+    failStop("Une broche n'est pas en mode PWM");
   }
-  return signal;
-}
-
-fn pwm_period(pin: PinName, period: i32) void {
   for(0..4) |i| {
     if(context.pwms[i].pin != pin) continue;
-    context.pwms[i].setPeriod(period);
+    context.pwms[i].setFreq(freq);
   }
 }
 
-fn pwm_rcy(pin: PinName, rcy: f32) void {
+fn pwm_rcy(pin: u8, rcy: f32) void {
+  if(!checkMode(pin, PinMode.PWM)){
+    failStop("Une broche n'est pas en mode PWM");
+  }
   for(0..4) |i| {
     if(context.pwms[i].pin != pin) continue;
     context.pwms[i].setRcy(rcy);
   }
 }
 
-fn pwm_pulse(pin: PinName, pulse: i32) void {
-  for(0..4) |i| {
-    if(context.pwms[i].pin != pin) continue;
-    context.pwms[i].setPulse(pulse);
+fn read_ana(pin: u8) u16 {
+  if(pin != interop.PB_1){
+    failStop("Vous ne pouvez pas lire en mode analogique sur une autre broche que PB_1");
   }
+  const S2: u8 = context.pins[interop.PF_0].load(.seq_cst);
+  const S1: u8 = context.pins[interop.PF_1].load(.seq_cst);
+  const S0: u8 = context.pins[interop.PA_8].load(.seq_cst);
+  const ana: f32 = context.anain[(S2 << 2) | (S1 << 1) | S0].load(.seq_cst);
+  return @intFromFloat(std.math.round(ana * 4095.0));
 }
 
-fn read_ana() f32 {
-  const S2 = context.pins[interop.PF_0].load(.seq_cst);
-  const S1 = context.pins[interop.PF_1].load(.seq_cst);
-  const S0 = context.pins[interop.PA_8].load(.seq_cst);
-  return context.anain[(S2 << 2) | (S1 << 1) | S0].load(.seq_cst);
-}
-
-fn readu16_ana() u16 {
-  const ana: u16 = @intFromFloat(std.math.round(read_ana() * 4095.0));
-  return (ana << 4) | ((ana >> 8) & 0xF);
+fn write_ana(pin: u8, value: u16) void {
+  if(pin != interop.PA_4){
+    failStop("Vous ne pouvez pas écrire en mode analogique sur une autre broche que PA_4");
+  }
+  context.anaout.store(@as(f32, @floatFromInt(value & 0xFFF)) / 4095.0, .seq_cst);
 }
 
 fn get_jog() u8 {
   return context.jog.load(.seq_cst);
 }
 
-fn get_cod() u8 {
+fn get_cod() i8 {
   return context.cod.load(.seq_cst);
 }
 
-const LCD_CHAR0 = 0x700;
-const LCD_CHAR1 = 0x701;
-const LCD_CHAR2 = 0x702;
-const LCD_CHAR3 = 0x703;
-const LCD_CLEAR = 0x77F;
-const BAR_SET = 0x7B0;
-
-fn can_write(msg: *interop.CAN_Message) void {
+fn can_write(ident: u16, size: u8, tab_data: [*c]u8) void {
   context.ihmMutex.lock();
-  switch(msg.id){
-    LCD_CHAR0,
-    LCD_CHAR1,
-    LCD_CHAR2,
-    LCD_CHAR3 => {
-      const offset = ((msg.id & 0x7F) * 8);
+  switch(ident){
+    interop.LCD_CHAR0,
+    interop.LCD_CHAR1,
+    interop.LCD_CHAR2,
+    interop.LCD_CHAR3 => {
+      const data = tab_data[0..size];
+      const offset = (ident & 0x7F) * 8;
       for(0..8) |i| {
-        context.lcd[i + offset] = if(msg.data[i] > 0x20) msg.data[i] else ' ';
+        context.lcd[i + offset] = if(data[i] > 0x20) data[i] else ' ';
       }
     },
-    LCD_CLEAR => { for(0..32) |i| context.lcd[i] = ' '; },
-    BAR_SET => {
-      for(0..2) |i| context.bargraph[9-i] = (msg.data[0] >> (1 - @as(u3, @intCast(i)))) & 1;
-      for(0..8) |i| context.bargraph[7-i] = (msg.data[1] >> (7 - @as(u3, @intCast(i)))) & 1;
+    interop.LCD_CLEAR => { for(0..32) |i| context.lcd[i] = ' '; },
+    interop.BAR_WRITE => {
+      const data = tab_data[0..size];
+      for(0..2) |i| context.bargraph[9-i] = (data[0] >> (1 - @as(u3, @intCast(i)))) & 1;
+      for(0..8) |i| context.bargraph[7-i] = (data[1] >> (7 - @as(u3, @intCast(i)))) & 1;
     },
     else => {}
   }
