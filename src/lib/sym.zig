@@ -49,6 +49,7 @@ pub fn loadNboardSymbols() void {
       var valid = true;
       while (valid) {
         if(std.mem.eql(u8, entry.szModule[0..10], "nboard.dll")){
+          while(SymUnloadModule64(processHandle, @intFromPtr(entry.modBaseAddr)) == windows.TRUE) {}
           const image_name: []u8 = &entry.szExePath;
           const module_name: []u8 = &entry.szModule;
           const base_address = SymLoadModuleEx(processHandle, null, image_name.ptr, module_name.ptr, @intFromPtr(entry.modBaseAddr), entry.modBaseSize, null, 0);
