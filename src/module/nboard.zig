@@ -278,8 +278,8 @@ fn stopNboardThread(optThread: *?std.Thread, optLib: *?std.DynLib) void {
     optThread.* = null;
   }
   if(optLib.*) |*lib| {
-    sym.unloadNboardSymbols();
     while(FreeLibrary(lib.inner.dll) != 0){} // Be sure that the DLL is fully unloaded
+    sym.unloadNboardSymbols();
     optLib.* = null;
   }
 }
