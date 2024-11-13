@@ -10,6 +10,7 @@ extern "kernel32" fn FreeLibrary(hLibModule: windows.HMODULE) callconv(windows.W
 const dyn = @import("../lib/dyn.zig");
 const interop = @import("../lib/interop.zig");
 const nboard = @import("../lib/nboard.zig");
+const sym = @import("../lib/sym.zig");
 const getWindow = @import("../module/webui.zig").getWindow;
 
 // Nboard Thread
@@ -250,7 +251,10 @@ fn managerThread() void {
     if(flagCheck(flags, RUN_NBOARD_FLAG)){
       if(optThread) |_| continue;
 
-      optLib = optLib orelse dyn.loadLibrary("./resources/build/nboard.dll") catch continue;
+      if(optLib == null){
+        optLib = dyn.loadLibrary("./resources/build/nboard.dll") catch continue;
+        sym.loadNboardSymbols();
+      }
 
       if(optLib) |*lib| {
         const main = dyn.lookup(lib, "internal_main");
@@ -274,6 +278,7 @@ fn stopNboardThread(optThread: *?std.Thread, optLib: *?std.DynLib) void {
     optThread.* = null;
   }
   if(optLib.*) |*lib| {
+    sym.unloadNboardSymbols();
     while(FreeLibrary(lib.inner.dll) != 0){} // Be sure that the DLL is fully unloaded
     optLib.* = null;
   }
@@ -308,8 +313,6 @@ fn failStop(msg: [*:0]const u8) noreturn {
   const window = getWindow();
   if(window) |win| blk: {
     const rawTrace = getStackTrace(allocator);
-
-    std.debug.print("trace:\n{s}\n", .{rawTrace});
 
     const sizeTrace = std.mem.replacementSize(u8, rawTrace, "\\", "\\\\");
     
