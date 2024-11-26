@@ -16,9 +16,10 @@
 #include "nboard.h"
 
 /**
- * @brief	Sélectionne une entrée analogique de la NBoard en configurant le
- * 			multiplexeur analogique.
- * @param	uint8_t la voie du multiplexeur à sélectionner
+ * @brief	Sélectionne l'entrée du multiplexeur analogique qui sera reliée à
+ * 			l'unique entrée analogique (PB_1) de la NBoard.
+ * @param	uint8_t le numéro de la voie d'entrée du multiplexeur analogique à
+ * 			utiliser (0 à 7)
  * @retval
  */
 void NB_ADC_MUX_select(uint8_t value)
@@ -36,6 +37,16 @@ void NB_ADC_MUX_select(uint8_t value)
 	{
     error("La valeur donné pour le multiplexeur est trop élevé");
 	}
+}
+
+/**
+ * @brief	Configure une pin de la NBoard en entrée analogique.
+ * @param	uint8_t la pin à configurer en entrée analogique
+ * @retval
+ */
+void NB_ADC_input(uint8_t pin)
+{
+  pin_mode(pin, PIN_MODE_ADC);
 }
 
 /**

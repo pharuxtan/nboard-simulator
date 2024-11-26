@@ -22,6 +22,8 @@ const PinMode = enum(u8) {
   INPUT_PULL_DOWN,
   INPUT_PULL_NONE,
   PWM,
+  ADC,
+  DAC
 };
 
 const BUILD_NBOARD_FLAG = 1 << 0;
@@ -447,6 +449,10 @@ fn pin_mode(pin: u8, mode: PinMode) void {
       interop.PB_3 => failStop("Vous ne pouvez pas mettre la led 0 en mode PWM"),
       else => {}
     }
+  } else if(mode == PinMode.ADC and pin != interop.PB_1){
+    failStop("Vous ne pouvez mettre que la broche PB_1 en mode input ADC");
+  } else if(mode == PinMode.DAC and pin != interop.PA_4){
+    failStop("Vous ne pouvez mettre que la broche PA_4 en mode output DAC");
   }
   context.pinModes[@intCast(pin)].store(mode, .seq_cst);
 }
@@ -537,6 +543,8 @@ fn pwm_rcy(pin: u8, rcy: f32) void {
 fn read_ana(pin: u8) u16 {
   if(pin != interop.PB_1){
     failStop("Vous ne pouvez pas lire en mode analogique sur une autre broche que PB_1");
+  } else if(!checkMode(pin, PinMode.ADC)){
+    failStop("La broche PB_1 n'est pas en mode input ADC");
   }
   const S2: u8 = context.pins[interop.PF_0].load(.seq_cst);
   const S1: u8 = context.pins[interop.PF_1].load(.seq_cst);
@@ -548,6 +556,8 @@ fn read_ana(pin: u8) u16 {
 fn write_ana(pin: u8, value: u16) void {
   if(pin != interop.PA_4){
     failStop("Vous ne pouvez pas écrire en mode analogique sur une autre broche que PA_4");
+  } else if(!checkMode(pin, PinMode.DAC)){
+    failStop("La broche PA_4 n'est pas en mode output DAC");
   }
   context.anaout.store(@as(f32, @floatFromInt(value & 0xFFF)) / 4095.0, .seq_cst);
 }

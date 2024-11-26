@@ -14,6 +14,8 @@ typedef enum : uint8_t {
   PIN_MODE_INPUT_PULL_DOWN,
   PIN_MODE_INPUT_PULL_NONE,
   PIN_MODE_PWM,
+  PIN_MODE_ADC,
+  PIN_MODE_DAC,
 } InternalPinMode;
 
 typedef struct SimulatorFuncs {
